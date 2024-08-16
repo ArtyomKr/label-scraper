@@ -6,10 +6,12 @@ import { existsSync } from 'fs';
 
 dotenv.config();
 
-const consumerKey = process.env.DISCORGS_KEY;
-const consumerSecret = process.env.DISCORGS_SECRET;
-const outputFile = process.env.OUTPUT_FILE;
-const delay = process.env.DELAY || 1000;
+const CONSUMER_KEY = process.env.DISCORGS_KEY;
+const CONSUMER_SECRET = process.env.DISCORGS_SECRET;
+const OUTPUT_FILE = process.env.OUTPUT_FILE;
+const DELAY = +process.env.DELAY || 1000;
+const REQUEST_EVERY_NTH = +process.env.REQUEST_EVERY_NTH || 1;
+const REQUEST_START_OFFSET = +process.env.REQUEST_START_OFFSET || 0;
 
 const appName = 'LabelScraper/1.0';
 
@@ -52,7 +54,7 @@ async function searchLabels(page: number = 1, per_page: number = 1): Promise<ILa
             },
             headers: {
                 'User-Agent': appName,
-                'Authorization': `Discogs key=${consumerKey}, secret=${consumerSecret}`
+                'Authorization': `Discogs key=${CONSUMER_KEY}, secret=${CONSUMER_SECRET}`
             }
         });
 
@@ -68,7 +70,7 @@ async function getLabelDetails(labelId: number): Promise<ILabelDetails | null> {
         const response: AxiosResponse<ILabelDetails> = await axios.get(`https://api.discogs.com/labels/${labelId}`, {
             headers: {
                 'User-Agent': appName,
-                'Authorization': `Discogs key=${consumerKey}, secret=${consumerSecret}`
+                'Authorization': `Discogs key=${CONSUMER_KEY}, secret=${CONSUMER_SECRET}`
             }
         });
 
@@ -91,13 +93,13 @@ async function timer(time: number) {
 }
 
 async function appendResultToFile(result: IFormattedData) {
-    if (!existsSync(outputFile)) {
-        await writeFile(outputFile, '[]');
+    if (!existsSync(OUTPUT_FILE)) {
+        await writeFile(OUTPUT_FILE, '[]');
     }
     try {
         let fileHandle;
         try {
-            fileHandle = await open(outputFile, 'r+');
+            fileHandle = await open(OUTPUT_FILE, 'r+');
             const fileSize = (await fileHandle.stat()).size;
             const firstLine = fileSize <= 2;
 
@@ -109,7 +111,7 @@ async function appendResultToFile(result: IFormattedData) {
             await fileHandle.write(',', fileSize - 1);
             await fileHandle.write(JSON.stringify(result, null, 2) + ']', fileSize);
 
-            console.log(chalk.green('Result appended to file:', outputFile));
+            console.log(chalk.green('Result appended to file:', OUTPUT_FILE));
         } finally {
             await fileHandle.close();
         }
@@ -120,7 +122,7 @@ async function appendResultToFile(result: IFormattedData) {
 
 async function getProcessedData(): Promise<IFormattedData[]> {
     try {
-        const fileData = await readFile(outputFile, 'utf-8');
+        const fileData = await readFile(OUTPUT_FILE, 'utf-8');
         return JSON.parse(fileData);
     } catch (error) {
         console.error(chalk.red('Error reading processed data:', (error as Error).message));
@@ -151,7 +153,7 @@ function formatData(labelData: ILabelDetails): IFormattedData | null {
 }
 
 async function main() {
-    console.log('Output file:', outputFile);
+    console.log('Output file:', OUTPUT_FILE);
 
     const labelsSearchRes = await searchLabels();
     const totalLabels = labelsSearchRes.pagination.items;
@@ -160,7 +162,7 @@ async function main() {
 
     console.log(chalk.bgBlue('Total Labels:'), totalLabels);
 
-    for (let i = lastIndex + 1; i <= totalLabels; i++) {
+    for (let i = Math.max(lastIndex + 1, REQUEST_START_OFFSET); i <= totalLabels; i += REQUEST_EVERY_NTH) {
         const labelDetails = await getLabelDetails(i);
         const startTime = Date.now();
 
@@ -172,7 +174,7 @@ async function main() {
         }
 
         const elapsedTime = Date.now() - startTime;
-        const remainingDelay = delay - elapsedTime;
+        const remainingDelay = DELAY - elapsedTime;
 
         if (remainingDelay > 0) {
             await timer(remainingDelay);
