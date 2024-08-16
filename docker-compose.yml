@@ -2,6 +2,8 @@ services:
   label-scraper:
     build:
       target: production
+      tags:
+        - registry.gitlab.com/gena.bondarev/token_back/label-scraper:latest
     volumes:
       - ./output:/app/output/
     env_file:
